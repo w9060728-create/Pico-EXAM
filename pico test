@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoScope 基礎診斷技術測驗</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .correct-ans { background-color: #d1fae5 !important; border-color: #10b981 !important; color: #065f46 !important; }
+        .wrong-ans { background-color: #fee2e2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+        .disabled-btn { pointer-events: none; opacity: 0.8; }
+        .blink-red { animation: blinker 1s linear infinite; color: #ef4444; font-weight: bold; }
+        @keyframes blinker { 50% { opacity: 0; } }
+    </style>
+</head>
+<body class="text-slate-800 flex items-center justify-center min-h-screen p-4">
+
+    <!-- 登入畫面 -->
+    <div id="login-screen" class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold text-center text-blue-900 mb-6">PicoScope 基礎技術評核</h1>
+        
+        <div class="mb-4">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">經銷商 / 廠區名稱</label>
+            <input type="text" id="dealer-input" class="w-full px-4 py-3 rounded-lg border focus:ring-2 focus:ring-blue-500 bg-gray-50" placeholder="例如：台北廠">
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">技師姓名</label>
+            <input type="text" id="name-input" class="w-full px-4 py-3 rounded-lg border focus:ring-2 focus:ring-blue-500 bg-gray-50" placeholder="請輸入本名">
+        </div>
+
+        <button onclick="startExam()" class="w-full bg-blue-800 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200">
+            開始進入評核
+        </button>
+    </div>
+
+    <!-- 測驗畫面 -->
+    <div id="quiz-screen" class="hidden bg-white p-6 rounded-xl shadow-lg w-full max-w-2xl relative">
+        <div class="absolute top-4 right-6 text-xl font-mono" id="timer-display">⏱️ 30:00</div>
+        
+        <div class="mb-6 mt-8">
+            <div class="text-sm font-bold text-blue-600 mb-2" id="progress-text">第 1 / 20 題</div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 5%"></div>
+            </div>
+        </div>
+
+        <h2 id="question-text" class="text-xl font-bold mb-6 leading-relaxed">題目載入中...</h2>
+        
+        <div id="options-container" class="space-y-3 mb-6"></div>
+
+        <div id="feedback-box" class="hidden p-4 rounded-lg mb-6 font-bold text-center"></div>
+
+        <button id="next-btn" onclick="nextQuestion()" class="hidden w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-lg transition duration-200">
+            下一題
+        </button>
+    </div>
+
+    <!-- 結果畫面 -->
+    <div id="result-screen" class="hidden bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
+        <h2 class="text-2xl font-bold text-slate-800 mb-2">評核完成</h2>
+        <div id="final-score" class="text-6xl font-extrabold text-blue-600 my-6"></div>
+        <div class="bg-blue-50 p-4 rounded-lg text-left text-sm text-blue-800 font-semibold leading-relaxed mb-6">
+            ✓ 單位：<span id="res-dealer"></span><br>
+            ✓ 姓名：<span id="res-name"></span><br>
+            ✓ 狀態：成績與答題詳情已安全同步至總部
+        </div>
+    </div>
+
+<script>
+    // Google 表單參數設定 (可自行替換為你的表單位址)
+    const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSftyWqZ8Q8tkYGA6bQeSnP2nxZldQoPt2gH7mSXczpfnNloaA/formResponse";
+    const entryDealer = "entry.1741632433";
+    const entryName = "entry.1735160920";
+    const entryScore = "entry.609819735";
+    const entryDetails = "entry.1154807191";
+
+    // PicoScope 基礎課程 20 題題庫
+    const quizData = [
+        { q: "使用三用電表測量快速變化的電子訊號時，它最大的限制是什麼？", a: ["體積太大不易攜帶", "顯示的是一段時間內的『平均值』，無法反映真實狀況", "只能測量交流電，不能測量直流電", "測量精度比示波器高太多導致不易判讀"], c: 1 },
+        { q: "相比於三用電表測量的是「點」的維度，示波器增加了哪些維度？", a: ["「面」與「空間」的維度", "「溫度」與「壓力」的維度", "「線」與「時間」的維度", "「聲音」與「震動」的維度"], c: 2 },
+        { q: "引擎運轉時，若用三用電表測量凸輪軸感知器得到 7.46V。關於這個數值，下列敘述何者正確？", a: ["這代表感知器絕對是好的", "這代表感知器電壓過低，已經損壞", "這個數字缺乏參考價值，因為它只是高低電壓切換時的平均值", "這代表電瓶電壓不足"], c: 2 },
+        { q: "傳統維修習慣遇到無法確認的故障，常直接拆卸同型車的零件來「交叉測試」，這種做法最大的缺點是？", a: ["浪費網路流量", "軟體容易當機", "耗費大量工時且極易引發二次故障", "會讓保固失效"], c: 2 },
+        { q: "在使用 PicoScope 軟體時，若點選內建的「引導測試 (Guided Tests)」，軟體會如何協助技師？", a: ["自動撥打客服電話", "自動設定量測時間與電壓，並提供接線圖說明", "自動發動引擎進行測試", "自動訂購損壞的零件"], c: 1 },
+        { q: "【電學迷思】引擎未發動時，用電表測量一根電線兩端，電阻顯示為 0 歐姆，這代表？", a: ["線路完美無缺，可以直接排除線路問題", "僅代表微小的測試電流能通過，即使內部斷裂 90% 也可能顯示 0 歐姆", "代表這根電線發生了短路", "代表電表故障"], c: 1 },
+        { q: "當系統啟動 (動態負載) 時，大量電流試圖通過一根內部斷裂 90% 的電線，在斷裂處會產生什麼現象？", a: ["產生極大的「壓降 (Voltage Drop)」，導致終端零件無法運作", "電壓會瞬間升高，燒毀零件", "電流會自動尋找其他線路通過", "沒有任何影響，零件照常運作"], c: 0 },
+        { q: "車主反映行駛中經過坑洞時，引擎會偶發性熄火。使用示波器檢查時，最適當的測試手法是？", a: ["靜態壓縮測試", "搖晃測試 (Wiggle Test)", "廢氣排放測試", "冷氣壓力測試"], c: 1 },
+        { q: "為什麼在進行搖晃線束測試時，示波器能精準抓出接觸不良的瞬間，而三用電表卻很難？", a: ["示波器極高的取樣率能立刻顯現瞬間的電壓掉落", "因為示波器有彩色螢幕", "因為示波器探棒比較長", "因為示波器需要插電"], c: 0 },
+        { q: "在電學診斷基礎概念中，電壓是推動力，那麼「電流」代表的是什麼？", a: ["零件的溫度", "線路的長度", "零件實際做功的表現 (機械狀態)", "電瓶的壽命"], c: 2 },
+        { q: "使用電流鉗量測馬達時，如果發現「電流異常升高」，通常代表什麼狀況？", a: ["馬達內部碳刷過度磨損", "線路接頭嚴重氧化", "電瓶電壓過高", "馬達運轉遇到極大阻力 (如軸承卡滯) 或內部線圈短路"], c: 3 },
+        { q: "反之，量測馬達時若發現「電流異常降低」，最可能的原因是？", a: ["馬達阻力過大", "電路中有異常高的阻抗 (導致壓降)，或內部碳刷過度磨損無法通電", "電瓶剛充飽電", "發電機發電量過高"], c: 1 },
+        { q: "執行免拆卸的「相對壓縮測試」時，大電流鉗夾應該夾在哪裡？", a: ["火星塞導線上", "發電機輸出線上", "電瓶的正極或負極線 (啟動馬達供電線)", "噴油嘴控制線上"], c: 2 },
+        { q: "進行相對壓縮測試的第一步「安全設定」是什麼？", a: ["開啟冷氣到最大", "暫時切斷車輛的點火或噴油系統，防止引擎真正發動", "拉起手煞車並踩死煞車", "將變速箱排入 D 檔"], c: 1 },
+        { q: "【物理轉換原理】啟動馬達克服每一個汽缸的壓縮行程時，其耗電量 (電流) 會有什麼變化？", a: ["隨之降低", "保持不變", "隨之增加", "隨機跳動"], c: 2 },
+        { q: "在相對壓縮測試的電流波形中，如果發現某一個波峰異常的「低」，代表該汽缸的狀況是？", a: ["該汽缸密封良好，壓縮阻力大", "該缸汽門漏氣或活塞環損壞，壓縮阻力減小", "啟動馬達故障", "電瓶沒電了"], c: 1 },
+        { q: "若將車輛的電學系統擬人化，哪一項物理數據代表「大腦 (The Brain)」，用來確認感知器訊號與電腦指令是否精確下達？", a: ["電壓 (Voltage)", "電流 (Current)", "電阻 (Resistance)", "溫度 (Temperature)"], c: 0 },
+        { q: "承上題，哪一項物理數據代表「神經系統 (The Nervous System)」，用來抓出隱藏的線路斷裂與確保電力傳輸無礙？", a: ["電壓 (Voltage)", "壓降/電阻 (Voltage Drop)", "電流 (Current)", "功率 (Power)"], c: 1 },
+        { q: "承上題，哪一項物理數據代表「肌肉 (The Muscle)」，最適合用來免拆卸評估馬達阻力與引擎汽缸壓縮狀態？", a: ["電壓 (Voltage)", "壓降 (Voltage Drop)", "電阻 (Resistance)", "電流 (Current)"], c: 3 },
+        { q: "從傳統維修升級到示波器科學驗證，課程最後強調的核心口號是什麼？", a: ["Guess, Not Test (先猜測再測試)", "Replace, Not Repair (只換不修)", "Test, Not Guess (靠數據，不靠猜測)", "Speed is Everything (速度就是一切)"], c: 2 }
+    ];
+
+    let state = {
+        dealer: "", name: "", currentQ: 0, score: 0,
+        logs: [], timer: 1800, interval: null, isAnswered: false,
+        inProgress: false 
+    };
+
+    // 終極防護一：攔截「上一頁」或「重新整理」
+    window.addEventListener("beforeunload", function (e) {
+        if (state.inProgress) {
+            e.preventDefault();
+            e.returnValue = "測驗尚未完成，確定要離開嗎？進度將遺失。";
+        }
+    });
+
+    // 終極防護二：網頁被強制關閉瞬間的「續命傳輸」
+    window.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === 'hidden' && state.inProgress) {
+            forceSubmit(true); 
+        }
+    });
+
+    function startExam() {
+        const d = document.getElementById("dealer-input").value.trim();
+        const n = document.getElementById("name-input").value.trim();
+        if (!d || !n) return alert("請輸入經銷商與姓名！");
+
+        state.dealer = d; 
+        state.name = n;
+        state.inProgress = true; 
+
+        document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("quiz-screen").classList.remove("hidden");
+        
+        startTimer();
+        loadQuestion();
+    }
+
+    function startTimer() {
+        const display = document.getElementById("timer-display");
+        state.interval = setInterval(() => {
+            state.timer--;
+            let m = Math.floor(state.timer / 60).toString().padStart(2, '0');
+            let s = (state.timer % 60).toString().padStart(2, '0');
+            display.innerText = `⏱️ ${m}:${s}`;
+
+            if (state.timer <= 300) display.classList.add("blink-red");
+
+            if (state.timer <= 0) {
+                alert("時間到！系統將自動交卷。");
+                forceSubmit(false);
+            }
+        }, 1000);
+    }
+
+    function loadQuestion() {
+        state.isAnswered = false;
+        document.getElementById("next-btn").classList.add("hidden");
+        document.getElementById("feedback-box").classList.add("hidden");
+        
+        const qData = quizData[state.currentQ];
+        document.getElementById("progress-text").innerText = `第 ${state.currentQ + 1} / ${quizData.length} 題`;
+        document.getElementById("progress-bar").style.width = `${((state.currentQ + 1) / quizData.length) * 100}%`;
+        document.getElementById("question-text").innerText = qData.q;
+
+        const opts = document.getElementById("options-container");
+        opts.innerHTML = "";
+        
+        qData.a.forEach((text, idx) => {
+            const btn = document.createElement("button");
+            btn.className = "w-full text-left px-5 py-4 border-2 rounded-lg font-medium transition duration-150 hover:bg-gray-50 bg-white border-gray-200 option-btn";
+            btn.innerText = text;
+            btn.onclick = () => selectAnswer(idx, btn);
+            opts.appendChild(btn);
+        });
+    }
+
+    function selectAnswer(selectedIndex, btnElement) {
+        if (state.isAnswered) return;
+        state.isAnswered = true;
+
+        const qData = quizData[state.currentQ];
+        const correctIndex = qData.c;
+        const allBtns = document.querySelectorAll(".option-btn");
+        const fbBox = document.getElementById("feedback-box");
+
+        // 鎖定所有按鈕
+        allBtns.forEach(b => b.classList.add("disabled-btn"));
+
+        let logText = "";
+        if (selectedIndex === correctIndex) {
+            btnElement.classList.add("correct-ans");
+            state.score += 5; // 每題 5 分
+            logText = `Q${state.currentQ + 1}:[對] 技師選:${qData.a[selectedIndex]}`;
+            fbBox.innerText = "✓ 答對了！";
+            fbBox.className = "p-4 rounded-lg mb-6 font-bold text-center bg-green-100 text-green-800 block";
+        } else {
+            // 答錯時，僅標示選擇錯誤的按鈕，『不』顯示正確答案
+            btnElement.classList.add("wrong-ans");
+            
+            // 記錄至後台的日誌依舊保留正確答案資訊，方便主管查閱
+            logText = `Q${state.currentQ + 1}:[錯] 技師選:${qData.a[selectedIndex]} / 正解:${qData.a[correctIndex]}`;
+            
+            // 畫面上只提示答錯
+            fbBox.innerText = `✗ 答錯了！請再接再厲。`;
+            fbBox.className = "p-4 rounded-lg mb-6 font-bold text-center bg-red-100 text-red-800 block";
+        }
+
+        state.logs.push(logText);
+        document.getElementById("next-btn").classList.remove("hidden");
+    }
+
+    function nextQuestion() {
+        state.currentQ++;
+        if (state.currentQ < quizData.length) {
+            loadQuestion();
+        } else {
+            forceSubmit(false); 
+        }
+    }
+
+    // 背景強制傳送引擎
+    function forceSubmit(isAborted) {
+        if (!state.inProgress) return; 
+        state.inProgress = false; 
+        clearInterval(state.interval);
+
+        let finalLogs = [...state.logs];
+
+        if (isAborted) {
+            finalLogs.push("【嚴重警告：技師於此題強行關閉網頁或返回上一頁，疑似作弊】");
+        } else {
+            while (state.currentQ < quizData.length) {
+                if(!state.isAnswered){
+                     finalLogs.push(`Q${state.currentQ + 1}:[未答] 未作答 / 正解:${quizData[state.currentQ].a[quizData[state.currentQ].c]}`);
+                }
+                state.currentQ++;
+                state.isAnswered = false;
+            }
+        }
+
+        const params = new URLSearchParams();
+        params.append(entryDealer, state.dealer);
+        params.append(entryName, state.name);
+        params.append(entryScore, state.score.toString());
+        params.append(entryDetails, finalLogs.join(" | "));
+
+        fetch(formUrl, {
+            method: "POST", mode: "no-cors",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: params.toString(),
+            keepalive: true 
+        }).catch(err => console.log(err));
+
+        if (!isAborted) {
+            document.getElementById("quiz-screen").classList.add("hidden");
+            document.getElementById("result-screen").classList.remove("hidden");
+            document.getElementById("res-dealer").innerText = state.dealer;
+            document.getElementById("res-name").innerText = state.name;
+            document.getElementById("final-score").innerText = state.score;
+        }
+    }
+</script>
+</body>
+</html>
