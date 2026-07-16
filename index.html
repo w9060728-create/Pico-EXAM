@@ -37,7 +37,7 @@
 
     <!-- 測驗畫面 -->
     <div id="quiz-screen" class="hidden bg-white p-6 rounded-xl shadow-lg w-full max-w-2xl relative">
-        <div class="absolute top-4 right-6 text-xl font-mono" id="timer-display">⏱️ 30:00</div>
+        <div class="absolute top-4 right-6 text-xl font-mono" id="timer-display">⏱️ 02:00</div>
         
         <div class="mb-6 mt-8">
             <div class="text-sm font-bold text-blue-600 mb-2" id="progress-text">第 1 / 20 題</div>
@@ -69,7 +69,7 @@
     </div>
 
 <script>
-    // Google 表單參數設定 (可自行替換為你的表單位址)
+    // Google 表單參數設定
     const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSftyWqZ8Q8tkYGA6bQeSnP2nxZldQoPt2gH7mSXczpfnNloaA/formResponse";
     const entryDealer = "entry.1741632433";
     const entryName = "entry.1735160920";
@@ -102,7 +102,7 @@
 
     let state = {
         dealer: "", name: "", currentQ: 0, score: 0,
-        logs: [], timer: 1800, interval: null, isAnswered: false,
+        logs: [], timer: 120, interval: null, isAnswered: false,
         inProgress: false 
     };
 
@@ -137,25 +137,41 @@
         loadQuestion();
     }
 
+    // 獨立題目的計時器 (每題2分鐘)
     function startTimer() {
         const display = document.getElementById("timer-display");
         state.interval = setInterval(() => {
-            state.timer--;
-            let m = Math.floor(state.timer / 60).toString().padStart(2, '0');
-            let s = (state.timer % 60).toString().padStart(2, '0');
-            display.innerText = `⏱️ ${m}:${s}`;
+            if (state.timer > 0) {
+                state.timer--;
+                let m = Math.floor(state.timer / 60).toString().padStart(2, '0');
+                let s = (state.timer % 60).toString().padStart(2, '0');
+                display.innerText = `⏱️ ${m}:${s}`;
 
-            if (state.timer <= 300) display.classList.add("blink-red");
+                // 剩餘 10 秒時閃爍紅字
+                if (state.timer <= 10) display.classList.add("blink-red");
+            }
 
-            if (state.timer <= 0) {
-                alert("時間到！系統將自動交卷。");
-                forceSubmit(false);
+            // 時間歸零時的處理
+            if (state.timer === 0) {
+                if (!state.isAnswered) {
+                    const qData = quizData[state.currentQ];
+                    state.logs.push(`Q${state.currentQ + 1}:[超時未答] 技師未作答 / 正解:${qData.a[qData.c]}`);
+                    state.isAnswered = true; // 鎖定狀態避免重複觸發
+                }
+                nextQuestion(); // 強制進入下一題
             }
         }, 1000);
     }
 
     function loadQuestion() {
         state.isAnswered = false;
+        
+        // 每次載入新題目時，重置計時器為 120 秒 (2 分鐘)
+        state.timer = 120; 
+        const display = document.getElementById("timer-display");
+        display.innerText = "⏱️ 02:00";
+        display.classList.remove("blink-red");
+
         document.getElementById("next-btn").classList.add("hidden");
         document.getElementById("feedback-box").classList.add("hidden");
         
